@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI多场景检测平台</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: "Microsoft YaHei", sans-serif; background: #1a1f2c; color: #fff; height: 100vh; display: flex; flex-direction: column; }
+        
+        /* 顶部导航 */
+        .header { height: 60px; background: #2c3240; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; }
+        .header h1 { font-size: 1.5rem; margin-right: 30px; }
+        .func-group { display: flex; gap: 8px; }
+        .func-btn { background: #333a48; border: none; color: #fff; padding: 6px 12px; border-radius: 4px; cursor: pointer; transition: all 0.3s; font-size: 0.9rem; }
+        .func-btn:hover { background: #3a7bd5; }
+        .func-btn.active { background: #3a7bd5; border: 1px solid #6ba2ff; }
+        .header .time { color: #ccc; margin-left: auto; }
+        
+        /* 主内容区 */
+        .main { display: flex; flex: 1; overflow: hidden; }
+        
+        /* 左侧来源列表 */
+        .left-panel { width: 200px; background: #232833; padding: 15px 0; overflow-y: auto; }
+        .source-item { padding: 12px 20px; cursor: pointer; transition: background 0.3s; }
+        .source-item:hover { background: #2c3240; }
+        .source-item.active { background: #3a7bd5; }
+        .source-type { font-size: 0.8rem; color: #aaa; margin-top: 3px; }
+        
+        /* 中间图像展示 */
+        .center-panel { flex: 1; padding: 15px; overflow-y: auto; }
+        .image-container { background: #232833; border-radius: 8px; padding: 15px; }
+        .image-container h3 { margin-bottom: 10px; color: #ddd; }
+        .image-wrapper { width: 100%; height: 600px; background: #1a1f2c; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+        .image-wrapper img { max-width: 100%; max-height: 100%; object-fit: contain; }
+        
+        /* 右侧事件列表 - 新增历史事件标签页 */
+        .right-panel { width: 300px; background: #232833; padding: 15px; overflow-y: auto; }
+        .tab-container { display: flex; border-bottom: 1px solid #333; margin-bottom: 15px; }
+        .tab-btn { flex: 1; background: #333a48; border: none; color: #fff; padding: 8px 0; cursor: pointer; transition: all 0.3s; text-align: center; font-size: 0.9rem; }
+        .tab-btn:hover { background: #3a7bd5; }
+        .tab-btn.active { background: #3a7bd5; border-bottom: 2px solid #6ba2ff; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .right-panel h2 { margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #333; }
+        .event-item { background: #2c3240; border-radius: 6px; padding: 12px; margin-bottom: 10px; border-left: 4px solid #f44336; }
+        .event-item.no-event { border-left-color: #4CAF50; }
+        .event-item.wrong-way { border-left-color: #f44336; background: rgba(244, 67, 54, 0.1); }
+        .event-item.illegal-parking { border-left-color: #ff9800; background: rgba(255, 152, 0, 0.1); }
+        .event-item.congestion-low { border-left-color: #4CAF50; background: rgba(76, 175, 80, 0.1); }
+        .event-item.congestion-medium { border-left-color: #ff9800; background: rgba(255, 152, 0, 0.1); }
+        .event-item.congestion-high { border-left-color: #f44336; background: rgba(244, 67, 54, 0.1); }
+        /* 拥堵状态指示器 */
+        .congestion-indicator {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            margin-left: 8px;
+        }
+        .congestion-low {
+            background: #4CAF50;
+            color: white;
+        }
+        .congestion-medium {
+            background: #ff9800;
+            color: white;
+        }
+        .congestion-high {
+            background: #f44336;
+            color: white;
+        }
+        .event-type { font-weight: bold; margin-bottom: 5px; }
+        .event-desc { font-size: 0.85rem; color: #bbb; margin-bottom: 3px; }
+        .event-source { font-size: 0.8rem; color: #888; margin-bottom: 3px; }
+        .event-time { font-size: 0.8rem; color: #aaa; }
+        
+        /* 新增：历史事件分页控件 */
+        .pagination { display: flex; justify-content: center; gap: 5px; margin-top: 15px; }
+        .page-btn { background: #333a48; border: none; color: #fff; padding: 5px 10px; border-radius: 4px; cursor: pointer; transition: all 0.3s; }
+        .page-btn:hover { background: #3a7bd5; }
+        .page-btn.active { background: #3a7bd5; }
+        .page-btn:disabled { background: #444; cursor: not-allowed; opacity: 0.6; }
+        
+        /* 新增：清空按钮 */
+        .clear-btn { background: #f44336; border: none; color: #fff; padding: 6px 12px; border-radius: 4px; cursor: pointer; transition: all 0.3s; margin-bottom: 10px; }
+        .clear-btn:hover { background: #d32f2f; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>AI多场景检测平台</h1>
+        <div class="func-group" id="func-group">
+            <button class="func-btn active" data-func="pedestrian">行人检测</button>
+            <button class="func-btn" data-func="vehicle">车辆检测</button>
+            <button class="func-btn" data-func="landslide">滑坡检测</button>
+            <button class="func-btn" data-func="bridge_collapse">桥梁坍塌检测</button>
+            <button class="func-btn" data-func="pier">桥墩检测</button>
+            <button class="func-btn" data-func="night_trajectory">夜间轨迹检测</button>
+            <button class="func-btn" data-func="visibility">能见度检测</button>
+            <button class="func-btn" data-func="pit">路面塌陷检测</button>
+        </div>
+        <div class="time" id="current-time"></div>
+    </div>
+
+    <div class="main">
+        <div class="left-panel" id="source-list">
+            <!-- JS动态生成 -->
+        </div>
+
+        <div class="center-panel">
+            <div class="image-container">
+                <h3 id="image-title">行人检测标记图（黄色框=ROI区域，红框=检测目标区域）</h3>
+                <div class="image-wrapper">
+                    <img id="processed-img" src="" alt="加载中...">
+                </div>
+            </div>
+        </div>
+
+        <div class="right-panel">
+            <!-- 新增：标签页切换 -->
+            <div class="tab-container">
+                <button class="tab-btn active" data-tab="realtime">实时事件</button>
+                <button class="tab-btn" data-tab="history">历史事件</button>
+            </div>
+            
+            <!-- 实时事件标签页 -->
+            <div class="tab-content active" id="realtime-tab">
+                <h2 id="event-title">行人检测事件记录</h2>
+                <div id="event-list">
+                    <!-- JS动态生成 -->
+                </div>
+            </div>
+            
+            <!-- 历史事件标签页（新增） -->
+            <div class="tab-content" id="history-tab">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <h2>历史事件记录</h2>
+                    <button class="clear-btn" id="clear-history-btn">清空历史</button>
+                </div>
+                <div id="history-event-list">
+                    <!-- JS动态生成 -->
+                </div>
+                <!-- 分页控件 -->
+                <div class="pagination" id="pagination">
+                    <button class="page-btn" id="prev-page" disabled>上一页</button>
+                    <span id="page-info">第 1 页 / 共 0 页</span>
+                    <button class="page-btn" id="next-page" disabled>下一页</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentSource = '';
+        let currentFunc = 'pedestrian';
+        const funcNameMap = {
+            pedestrian: '行人检测',
+            vehicle: '车辆检测',
+            landslide: '滑坡检测',
+            bridge_collapse: '桥梁坍塌检测',
+            pier: '桥墩检测',
+            night_trajectory: '夜间轨迹检测',
+            visibility: '能见度检测',
+            pit: '路面塌陷检测'
+        };
+        
+        // 新增：历史事件分页参数
+        let historyPage = 1;
+        const pageSize = 5;
+        let totalHistoryPages = 0;
+
+        // 定时刷新数据和时间
+        setInterval(refreshData, 1000);
+        setInterval(updateTime, 1000);
+        // 初始化
+        initSources();
+        initFuncButtons();
+        initTabs();  // 新增：初始化标签页
+        initHistoryEvents();  // 新增：初始化历史事件
+        initClearButton();  // 新增：初始化清空按钮
+        refreshData();
+        updateTime();
+
+        // 初始化监控来源列表
+        function initSources() {
+            fetch('/api/state')
+                .then(res => res.json())
+                .then(data => {
+                    const sourceList = document.getElementById('source-list');
+                    sourceList.innerHTML = '';
+                    Object.keys(data.sources).forEach(sourceId => {
+                        const source = data.sources[sourceId];
+                        const item = document.createElement('div');
+                        item.className = `source-item ${sourceId === data.current_source ? 'active' : ''}`;
+                        item.innerHTML = `
+                            <div>${sourceId}</div>
+                            <div class="source-type">${source.type}</div>
+                        `;
+                        item.onclick = () => switchSource(sourceId);
+                        sourceList.appendChild(item);
+                    });
+                    currentSource = data.current_source;
+                });
+        }
+
+        // 切换监控来源
+        function switchSource(sourceId) {
+            fetch(`/api/switch_source/${sourceId}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        document.querySelectorAll('.source-item').forEach(item => {
+                            item.classList.remove('active');
+                            if (item.textContent.includes(sourceId)) {
+                                item.classList.add('active');
+                            }
+                        });
+                        currentSource = sourceId;
+                        refreshData();
+                        // 切换来源后刷新历史事件（可选）
+                        historyPage = 1;
+                        initHistoryEvents();
+                    }
+                });
+        }
+
+        // 初始化功能按钮
+        function initFuncButtons() {
+            const funcButtons = document.querySelectorAll('.func-btn');
+            funcButtons.forEach(btn => {
+                btn.onclick = () => {
+                    funcButtons.forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    currentFunc = btn.dataset.func;
+                    updatePageTitles();
+                    refreshData();
+                    // 切换功能后刷新历史事件（按功能过滤）
+                    historyPage = 1;
+                    initHistoryEvents();
+                };
+            });
+        }
+
+        // 新增：初始化标签页切换
+        function initTabs() {
+            const tabBtns = document.querySelectorAll('.tab-btn');
+            const tabContents = document.querySelectorAll('.tab-content');
+            
+            tabBtns.forEach(btn => {
+                btn.onclick = () => {
+                    const tabId = btn.dataset.tab;
+                    
+                    // 更新按钮状态
+                    tabBtns.forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    
+                    // 更新内容显示
+                    tabContents.forEach(content => {
+                        content.classList.remove('active');
+                    });
+                    document.getElementById(`${tabId}-tab`).classList.add('active');
+                    
+                    // 切换到历史标签页时加载数据
+                    if (tabId === 'history' && document.getElementById('history-event-list').innerHTML === '') {
+                        initHistoryEvents();
+                    }
+                };
+            });
+        }
+
+                // 新增：初始化历史事件（修改查询逻辑）
+        function initHistoryEvents() {
+            // 关键修改：默认不传递func和source参数，查询所有事件
+            // 如需过滤，可在切换功能/来源时传递参数
+            fetch(`/api/db/events?limit=${pageSize}&offset=${(historyPage - 1) * pageSize}`)
+                .then(res => res.json())
+                .then(data => {
+                    const historyList = document.getElementById('history-event-list');
+                    historyList.innerHTML = '';
+                    
+                    if (data.events.length === 0) {
+                        historyList.innerHTML = '<div style="color:#aaa; padding:10px; text-align:center;">暂无历史事件</div>';
+                        totalHistoryPages = 0;
+                    } else {
+                        // 计算总页数（使用真实总条数）
+                        totalHistoryPages = Math.ceil(data.total / pageSize);
+                        
+                        // 渲染历史事件
+                        data.events.forEach(event => {
+                            const item = document.createElement('div');
+                            let eventClass = '';
+                            if (event.event_type === '无事件') {
+                                eventClass = 'no-event';
+                            } else if (event.event_type === '车辆逆行') {
+                                eventClass = 'wrong-way';
+                            } else if (event.event_type === '违法停车') {
+                                eventClass = 'illegal-parking';
+                            } else if (event.event_type === '车辆检测') {
+                                // 根据拥堵状态添加样式
+                                if (event.event_desc.includes('高拥堵')) {
+                                    eventClass = 'congestion-high';
+                                } else if (event.event_desc.includes('中拥堵')) {
+                                    eventClass = 'congestion-medium';
+                                } else if (event.event_desc.includes('低拥堵')) {
+                                    eventClass = 'congestion-low';
+                                } else {
+                                    eventClass = 'no-event';
+                                }
+                            }
+                            item.className = `event-item ${eventClass}`;
+                            
+                            // 解析拥堵状态
+                            let congestionStatus = '';
+                            if (event.event_desc) {
+                                if (event.event_desc.includes('高拥堵')) {
+                                    congestionStatus = '<span class="congestion-indicator congestion-high">高拥堵</span>';
+                                } else if (event.event_desc.includes('中拥堵')) {
+                                    congestionStatus = '<span class="congestion-indicator congestion-medium">中拥堵</span>';
+                                } else if (event.event_desc.includes('低拥堵')) {
+                                    congestionStatus = '<span class="congestion-indicator congestion-low">低拥堵</span>';
+                                }
+                            }
+                            
+                            // 格式化额外信息
+                            let extraInfoHtml = '';
+                            if (event.extra_info && Object.keys(event.extra_info).length > 0) {
+                                if (event.extra_info.person_count !== undefined) {
+                                    extraInfoHtml = `<div class="event-desc">检测数量：${event.extra_info.person_count}人</div>`;
+                                } else if (event.extra_info.vehicle_count !== undefined) {
+                                    extraInfoHtml = `<div class="event-desc">检测数量：${event.extra_info.vehicle_count}辆</div>`;
+                                } else if (event.extra_info.pier_count !== undefined) {
+                                    extraInfoHtml = `<div class="event-desc">检测数量：${event.extra_info.pier_count}个</div>`;
+                                } else if (event.extra_info.change_ratio !== undefined) {
+                                    extraInfoHtml = `<div class="event-desc">变化比例：${(event.extra_info.change_ratio * 100).toFixed(2)}%</div>`;
+                                }
+                            }
+                            
+                            item.innerHTML = `
+                                <div class="event-type">${event.event_type}${congestionStatus}</div>
+                                <div class="event-desc">${event.event_desc}</div>
+                                ${extraInfoHtml}
+                                <div class="event-source">监控源：${event.source_id}</div>
+                                <div class="event-source">检测功能：${event.detect_func}</div>
+                                <div class="event-time">${event.event_time}</div>
+                            `;
+                            historyList.appendChild(item);
+                        });
+                    }
+                    
+                    // 更新分页控件
+                    updatePagination();
+                })
+                .catch(err => {
+                    console.error('加载历史事件失败：', err);
+                    document.getElementById('history-event-list').innerHTML = '<div style="color:#ff6b6b; padding:10px; text-align:center;">加载失败，请重试</div>';
+                });
+        }
+
+        // 修改：切换功能时的历史事件查询（可选过滤）
+        function initFuncButtons() {
+            const funcButtons = document.querySelectorAll('.func-btn');
+            funcButtons.forEach(btn => {
+                btn.onclick = () => {
+                    funcButtons.forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    currentFunc = btn.dataset.func;
+                    updatePageTitles();
+                    refreshData();
+                    // 切换功能后刷新历史事件（可选过滤）
+                    historyPage = 1;
+                    // 传递func参数进行过滤，如需查询所有则不传递
+                    fetch(`/api/db/events?limit=${pageSize}&offset=0&func=${currentFunc}`)
+                        .then(res => res.json())
+                        .then(data => {
+                            // 渲染逻辑和initHistoryEvents一致，可抽取为公共函数
+                            const historyList = document.getElementById('history-event-list');
+                            historyList.innerHTML = '';
+                            if (data.events.length === 0) {
+                                historyList.innerHTML = `<div style="color:#aaa; padding:10px; text-align:center;">暂无${funcNameMap[currentFunc]}相关历史事件</div>`;
+                            } else {
+                                totalHistoryPages = Math.ceil(data.total / pageSize);
+                                data.events.forEach(event => {
+                                    // 渲染逻辑同上
+                                    const item = document.createElement('div');
+                                    const isNoEvent = event.event_type === '无事件';
+                                    item.className = `event-item ${isNoEvent ? 'no-event' : ''}`;
+                                    // ... 其余渲染代码不变 ...
+                                    historyList.appendChild(item);
+                                });
+                            }
+                            updatePagination();
+                        });
+                };
+            });
+        }
+
+        // 新增：更新分页控件状态
+        function updatePagination() {
+            const prevBtn = document.getElementById('prev-page');
+            const nextBtn = document.getElementById('next-page');
+            const pageInfo = document.getElementById('page-info');
+            
+            prevBtn.disabled = historyPage <= 1;
+            nextBtn.disabled = historyPage >= totalHistoryPages;
+            pageInfo.textContent = `第 ${historyPage} 页 / 共 ${totalHistoryPages || 0} 页`;
+            
+            // 绑定分页按钮事件
+            prevBtn.onclick = () => {
+                if (historyPage > 1) {
+                    historyPage--;
+                    initHistoryEvents();
+                }
+            };
+            
+            nextBtn.onclick = () => {
+                if (historyPage < totalHistoryPages) {
+                    historyPage++;
+                    initHistoryEvents();
+                }
+            };
+        }
+
+        // 新增：初始化清空历史按钮
+        function initClearButton() {
+            const clearBtn = document.getElementById('clear-history-btn');
+            clearBtn.onclick = () => {
+                if (confirm('确定要清空所有历史事件吗？此操作不可恢复！')) {
+                    fetch('/api/db/clear')
+                        .then(res => res.json())
+                        .then(data => {
+                            if (data.status === 'success') {
+                                alert('历史事件已清空');
+                                historyPage = 1;
+                                initHistoryEvents();
+                            }
+                        })
+                        .catch(err => {
+                            console.error('清空历史事件失败：', err);
+                            alert('清空失败，请重试');
+                        });
+                }
+            };
+        }
+
+        // 更新页面标题
+        function updatePageTitles() {
+            const funcName = funcNameMap[currentFunc];
+            document.getElementById('image-title').textContent = `${funcName}标记图（黄色框=ROI区域，红框=检测目标区域）`;
+            document.getElementById('event-title').textContent = `${funcName}事件记录`;
+            document.title = `AI${funcName}平台`;
+        }
+
+        // 核心：刷新检测数据
+        function refreshData() {
+            if (!currentSource) {
+                initSources();
+                return;
+            }
+
+            fetch(`/api/process?sourceId=${currentSource}&func=${currentFunc}`)
+                .then(res => {
+                    if (!res.ok) throw new Error('接口请求失败');
+                    return res.json();
+                })
+                .then(data => {
+                    // 更新标记图
+                    if (data.processed_img_url) {
+                        document.getElementById('processed-img').src = data.processed_img_url;
+                        document.getElementById('processed-img').alt = `${funcNameMap[currentFunc]}标记图`;
+                    }
+
+                    // 更新实时事件列表
+                    const eventList = document.getElementById('event-list');
+                    eventList.innerHTML = '';
+                    if (data.events && data.events.length > 0) {
+                        data.events.forEach(event => {
+                            const item = document.createElement('div');
+                            let eventClass = '';
+                            if (event.type === '无事件') {
+                                eventClass = 'no-event';
+                            } else if (event.type === '车辆逆行') {
+                                eventClass = 'wrong-way';
+                            } else if (event.type === '违法停车') {
+                                eventClass = 'illegal-parking';
+                            } else if (event.type === '车辆检测') {
+                                // 根据拥堵状态添加样式
+                                if (event.desc.includes('高拥堵')) {
+                                    eventClass = 'congestion-high';
+                                } else if (event.desc.includes('中拥堵')) {
+                                    eventClass = 'congestion-medium';
+                                } else if (event.desc.includes('低拥堵')) {
+                                    eventClass = 'congestion-low';
+                                } else {
+                                    eventClass = 'no-event';
+                                }
+                            }
+                            item.className = `event-item ${eventClass}`;
+                            // 解析拥堵状态
+                            let congestionStatus = '';
+                            if (event.desc) {
+                                if (event.desc.includes('高拥堵')) {
+                                    congestionStatus = '<span class="congestion-indicator congestion-high">高拥堵</span>';
+                                } else if (event.desc.includes('中拥堵')) {
+                                    congestionStatus = '<span class="congestion-indicator congestion-medium">中拥堵</span>';
+                                } else if (event.desc.includes('低拥堵')) {
+                                    congestionStatus = '<span class="congestion-indicator congestion-low">低拥堵</span>';
+                                }
+                            }
+                            item.innerHTML = `
+                                <div class="event-type">${event.type}${congestionStatus}</div>
+                                ${event.desc ? `<div class="event-desc">${event.desc}</div>` : ''}
+                                <div class="event-time">${event.time}</div>
+                            `;
+                            eventList.appendChild(item);
+                        });
+                    } else {
+                        eventList.innerHTML = '<div class="event-item no-event" style="text-align:center;">暂无相关事件</div>';
+                    }
+                })
+                .catch(err => {
+                    console.error('数据刷新失败：', err);
+                    document.getElementById('processed-img').alt = '加载失败，请重试';
+                });
+        }
+
+        // 更新当前时间
+        function updateTime() {
+            const now = new Date();
+            document.getElementById('current-time').textContent = now.toLocaleString();
+        }
+    </script>
+</body>
+</html>
